@@ -77,24 +77,29 @@
 	  * @param  {String} userData JSON-ответ сервера
 	  */
 	 GitHubUserInfo.prototype.parseUser = function(userData) {
-		var user = JSON.parse(userData);
-		var userValues = {
-			name: user.name ? user.name : '',
-			email: user.email ? user.email : 'Не указан',
-			url: user.html_url ? user.html_url : 'https:/github.com/users/' + user.login,
-			followers: user.followers ? user.followers : 0,
-			followers_url: 'https://github.com/' + user.login + '/followers'
-		};
-		Object.keys(userValues).forEach( function(key) {
-			this.user[key] = userValues[key];
-		}.bind(this) );
+	 	var userValues, user;
+	 	try {
+			user = JSON.parse(userData);
+			userValues = {
+				name: user.name ? user.name : '',
+				email: user.email ? user.email : 'Не указан',
+				url: user.html_url ? user.html_url : 'https:/github.com/users/' + user.login,
+				followers: user.followers ? user.followers : 0,
+				followers_url: 'https://github.com/' + user.login + '/followers'
+			};
+			Object.keys(userValues).forEach( function(key) {
+				this.user[key] = userValues[key];
+			}.bind(this) );
 
-		this.doRequest(user['repos_url'], { 
-			200 : this.parseRepos.bind(this),					// парсим список репозиториев
-			0   : this.reportNetError.bind(this),
-			403 : this.reportRateLimit.bind(this)
-		 }, 3000 );
-		this.reportProgress(50, 99);
+			this.doRequest(user['repos_url'], { 
+				200 : this.parseRepos.bind(this),					// парсим список репозиториев
+				0   : this.reportNetError.bind(this),
+				403 : this.reportRateLimit.bind(this)
+			 }, 3000 );
+			this.reportProgress(50, 99);
+		} catch (e) {												// Если JSON ответ не распарсился
+ 			 this.reportNetError();									// то пришли битые данные
+		}
 	}
 
 	/**
@@ -146,24 +151,29 @@
 	  * @param  {String} reposData JSON-ответ сервера
 	  */
 	GitHubUserInfo.prototype.parseRepos = function(reposData) {
-		var repos = JSON.parse(reposData);
-		var self = this;
-		this.user.repos = [];
-		repos.forEach(
-			function(repo) {
-				if (! repo['private'] ) {
-					self.user.repos.push( { 
-						name:repo.name, 
-						url: repo.html_url,
-						desc: repo.description
-					} );
+		var repos, self;
+		try {
+			repos = JSON.parse(reposData);
+			self = this;
+			this.user.repos = [];
+			repos.forEach(
+				function(repo) {
+					if (! repo['private'] ) {
+						self.user.repos.push( { 
+							name:repo.name, 
+							url: repo.html_url,
+							desc: repo.description
+						} );
+					}
 				}
-			}
-			);
-		this.reportProgress(100);
-		this.user.date = Date.now();
-		this.user.fromCache = undefined;
-		this.setToCache(this.user);
+				);
+			this.reportProgress(100);
+			this.user.date = Date.now();
+			this.user.fromCache = undefined;
+			this.setToCache(this.user);
+		} catch (e) {												// Если JSON ответ не распарсился
+ 			 this.reportNetError();									// то пришли битые данные
+		}
 	}
 
 
