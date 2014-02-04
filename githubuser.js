@@ -15,8 +15,8 @@
 		var url, localItem;
 		this.onProgress = callback;
 
-		localItem = localStorage.getItem( userName );		// если пользователь в кеше
-		if ( localItem ) {
+		localItem = this.getFromCache( userName );		// если пользователь в кеше
+		if ( localItem !== null) {
 			this.user = JSON.parse(localItem);
 			this.user.fromCache = true;
 		} else {
@@ -163,7 +163,23 @@
 		this.reportProgress(100);
 		this.user.date = Date.now();
 		this.user.fromCache = undefined;
-		localStorage.setItem(this.user.login, JSON.stringify(this.user) );
+		this.setToCache(this.user);
+	}
+
+
+	GitHubUserInfo.prototype.getFromCache = function(username) {
+		var localItem = null;
+		if (window.localStorage) {
+			localItem = localStorage.getItem( username );
+		}
+		return localItem;
+	}
+
+
+	GitHubUserInfo.prototype.setToCache = function(user) {
+		if (window.localStorage) {
+			localStorage.setItem(user.login, JSON.stringify(user) );
+		}
 	}
 
 
@@ -341,12 +357,11 @@
 	 */
 	ViewUpdater.prototype.getUser = function(e) {
 		e = e || window.event;
-		if (e.preventDefault) 
-			e.preventDefault();
-		else 
-			e.returnValue = false;
-
-		if (this.loginIn) {
+		if ( (this.loginIn) && (this.loginIn.value.length > 0)) {	
+			if (e.preventDefault) 
+				e.preventDefault();
+			else 
+				e.returnValue = false;
 			this.user = new GitHubUserInfo( this.loginIn.value, this.updatePage.bind(this) );
 		}
 	}
