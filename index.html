@@ -1,0 +1,41 @@
+﻿<!DOCTYPE html>
+<html>
+  <head>
+	<meta charset=utf-8>
+	<title>Задание по AJAX</title>
+	<script type="text/javascript" src="githubuser.js"></script>
+	<link rel="stylesheet" href="githubuser.css"/>
+  </head>
+  <body>
+	<header>
+	  <hgroup>
+		 <h1>Информация о GitHub пользователе</h1>
+	  </hgroup>
+	</header>
+	<div class='container'>
+		<form class="form">
+			<label for="user_login">Введите имя пользователя</label>
+			<input id="user_login" type="text" value="feugenix"/>
+			<button id="search_button" type="submit">Найти</button>
+			<div id='progress_bar_container'><div id='progress_bar'></div></div>
+		</form>
+		<section id="output">
+			<h2><a id='login'> </a></h2>
+			<span>Имя пользователя: <span id='user_name'> </span><br></span>
+			<span>E-mail: <a id='user_email'> </a><br></span>
+			<span>Количество фолловеров: <a id='followers_count'> </a><br></span>
+			<ul id='repos_list'>
+				<h3>Публичные репозитории</h3>
+			</ul>
+			<span id="error_message"> </span>
+		</section>
+	</div>
+	<footer>
+		<div class="vcard sign">
+			<span class="title">Вёрстка</span>:
+			<span class="fn nickname">Фурсенко Александр</span>
+			(<span class="email">alex@tnu.edu.ua</span>)
+		</div>
+	</footer>
+  </body>
+</html>
