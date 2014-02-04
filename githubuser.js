@@ -20,7 +20,7 @@
 			this.user = JSON.parse(localItem);
 			this.user.fromCache = true;
 		} else {
-			this.user = { 
+			this.user = { 								// а иначе просто заготовка
 				login: userName,
 				error: false,
 				url : null, 
@@ -176,7 +176,12 @@
 		}
 	}
 
-
+	/**
+	 * Получаем данные из кеша
+	 * Пока, только из localStorage
+	 * @param  {String} username Логин пользователя
+	 * @return {Object}          Объект с информацией о пользвателе или null
+	 */
 	GitHubUserInfo.prototype.getFromCache = function(username) {
 		var localItem = null;
 		if (window.localStorage) {
@@ -185,7 +190,11 @@
 		return localItem;
 	}
 
-
+	/**
+	 * Сохраняем данные в кеш
+	 * Аналогично только в localStorage
+	 * @param  {String} username Логин пользователя
+	 */
 	GitHubUserInfo.prototype.setToCache = function(user) {
 		if (window.localStorage) {
 			localStorage.setItem(user.login, JSON.stringify(user) );
@@ -367,13 +376,13 @@
 	 */
 	ViewUpdater.prototype.getUser = function(e) {
 		e = e || window.event;
-		if ( (this.loginIn) && (this.loginIn.value.length > 0)) {	
-			if (e.preventDefault) 
+		if ( (this.loginIn) && (this.loginIn.value.length > 0)) {	// если логин введён, то 
+			if (e.preventDefault) 									// отменяем стандартный submit
 				e.preventDefault();
 			else 
-				e.returnValue = false;
+				e.returnValue = false;								// и запрашиваем информацию
 			this.user = new GitHubUserInfo( this.loginIn.value, this.updatePage.bind(this) );
-		}
+		}															// иначе позволим браузеру ругнуться, что поле не заполнено
 	}
 
 	/**
