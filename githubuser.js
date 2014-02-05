@@ -17,7 +17,7 @@
 															// асинхронная архитектура indexedDB требует 
 		this.getUserFromCache( userName, function() {		// введения callback функции
 			if ( this.user !== null) {
-				this.user.fromCache = true;					// если пользователь в кеше
+				this.fromCache = true;						// если пользователь из кеша
 			} else {
 				this.user = { 								// а иначе просто заготовка
 					login: userName,
@@ -42,7 +42,7 @@
 		)
 	}
 
-	GitHubUserInfo.prototype.GitHubAPI = 'https://api.github.com'; //192.168.0.3/
+	GitHubUserInfo.prototype.GitHubAPI = 'https://api.github.com'; 
 	GitHubUserInfo.prototype.IDBName = 'GitHubUsers';
 	GitHubUserInfo.prototype.IDBOStore = 'UserList';
 
@@ -123,8 +123,8 @@
 	GitHubUserInfo.prototype.reportError = function( message) {
 		this.user.error = true;
 		this.user.msg = message;
-		if (this.user.fromCache)
-			this.user.msg += ". Данные выведены из кеша и возможно устарели";
+		if (this.fromCache)
+			this.user.msg += ". Данные использованы из кеша и возможно устарели";
 		this.reportProgress(100);
 	}
 	/**
@@ -171,8 +171,7 @@
 				}
 				);
 			this.reportProgress(100);
-			this.user.date = Date.now();
-			this.user.fromCache = undefined;
+			this.user.date = 1000;//Date.now();
 			this.putToCache(this.user);
 		} catch (e) {												// Если JSON ответ не распарсился
  			 this.reportNetError();									// то пришли битые данные
@@ -278,7 +277,7 @@
 
 	/**
 	 * Сохраняет информацию о пользователе в базу данных
-	 * @param  {Object} user Объект с инфрмацией о пользователе
+	 * @param  {Object} user Объект с информацией о пользователе
 	 */
 	GitHubUserInfo.prototype.putUserToIndexedDB = function(user) {
 		if (this.isIDBOpened( this.putUserToIndexedDB.bind(this, user) )) { // аналогично, либо продолжаем, либо вызовем саму себя при удачном открытии
