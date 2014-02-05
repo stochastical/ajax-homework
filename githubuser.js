@@ -1,5 +1,5 @@
 
-
+'use strict'
 //////////////////////////////////////////////////
 // класс для получения информации о пользовате  //
 //////////////////////////////////////////////////
@@ -9,40 +9,42 @@
 	 * Конструктор класса для получения информации о пользовате
 	 * @param {String}   userName Логин пльзователя
 	 * @param {Function} callback Функция обратного вызова при изменении состояния
-	 * @return {Object}           Информация о пользователе
 	 */
 	function GitHubUserInfo(userName, callback) {
-		var url, localItem;
+		var url;
 		this.onProgress = callback;
-
-		localItem = this.getFromCache( userName );		// если пользователь в кеше
-		if ( localItem !== null) {
-			this.user = JSON.parse(localItem);
-			this.user.fromCache = true;
-		} else {
-			this.user = { 								// а иначе просто заготовка
-				login: userName,
-				error: false,
-				url : null, 
-				followers_url: null 
-			};
-		}
-		if ( (! this.user.date) ||  ( ( Date.now() - this.user.date) > 24 * 60 * 60 * 1000) ) {	// информация новее чем сутки
-			url = this.GitHubAPI + '/users/' + userName;
-			this.reportProgress(1, 49);
-			this.doRequest(url, { 
-				200 : this.parseUser.bind(this),
-				404 : this.reportUserNotFound.bind(this),
-				0   : this.reportNetError.bind(this),
-				403 : this.reportRateLimit.bind(this)
-			}, 3000 );
-		} else {
-			this.reportProgress(100);
-		}
-		return this.user
+		this.user = null;
+															// асинхронная архитектура indexedDB требует 
+		this.getUserFromCache( userName, function() {		// введения callback функции
+			if ( this.user !== null) {
+				this.user.fromCache = true;					// если пользователь в кеше
+			} else {
+				this.user = { 								// а иначе просто заготовка
+					login: userName,
+					error: false,
+					url : null, 
+					followers_url: null 
+				};
+			}
+			if ( (! this.user.date) ||  ( ( Date.now() - this.user.date) > 24 * 60 * 60 * 1000) ) {	// информация новее чем сутки
+				url = this.GitHubAPI + '/users/' + userName;
+				this.reportProgress(1, 49);
+				this.doRequest(url, { 
+					200 : this.parseUser.bind(this),
+					404 : this.reportUserNotFound.bind(this),
+					0   : this.reportNetError.bind(this),
+					403 : this.reportRateLimit.bind(this)
+				}, 3000 );
+			} else {
+				this.reportProgress(100);
+			}
+		}.bind(this)
+		)
 	}
 
 	GitHubUserInfo.prototype.GitHubAPI = 'https://api.github.com'; //192.168.0.3/
+	GitHubUserInfo.prototype.IDBName = 'GitHubUsers';
+	GitHubUserInfo.prototype.IDBOStore = 'UserList';
 
 	 /**
 	  * Посылает асинхронный GET запрос
@@ -52,6 +54,7 @@
 	  */
 	GitHubUserInfo.prototype.doRequest = function(url, callbacks, timeout) {
 		var req = new XMLHttpRequest();
+		var callback;
 		req.open('GET', url, true);
 		req.onreadystatechange = function() {
 			var cback;
@@ -170,7 +173,7 @@
 			this.reportProgress(100);
 			this.user.date = Date.now();
 			this.user.fromCache = undefined;
-			this.setToCache(this.user);
+			this.putToCache(this.user);
 		} catch (e) {												// Если JSON ответ не распарсился
  			 this.reportNetError();									// то пришли битые данные
 		}
@@ -178,31 +181,113 @@
 
 	/**
 	 * Получаем данные из кеша
-	 * Пока, только из localStorage
-	 * @param  {String} username Логин пользователя
-	 * @return {Object}          Объект с информацией о пользвателе или null
+	 * По умолчанию используем indexedDB, иначе откатываемся на localStorage (Opera 12, например)
+	 * @param  {String}   username Логин пользователя
+	 * @param  {Function} whenReady Callback который вызывается когда работа закончена (данные могут быть и не получены) 
 	 */
-	GitHubUserInfo.prototype.getFromCache = function(username) {
+	GitHubUserInfo.prototype.getUserFromCache = function(username, whenReady) {
 		var localItem = null;
-		if (window.localStorage) {
-			localItem = localStorage.getItem( username );
+		if (window.indexedDB) {								// если есть indexedDB, то используем её
+			this.getUserFromIndexedDB(username, whenReady);	
+		} else {											// иначе ... 
+			localItem = localStorage.getItem( username );	// используем localStorage
+			this.user = JSON.parse(localItem);
+			if (whenReady instanceof Function)
+				whenReady();
 		}
-		return localItem;
 	}
 
 	/**
 	 * Сохраняем данные в кеш
-	 * Аналогично только в localStorage
+	 * Аналогично сначала пробуем indexedDB, потом localStorage
 	 * @param  {String} username Логин пользователя
 	 */
-	GitHubUserInfo.prototype.setToCache = function(user) {
-		if (window.localStorage) {
+	GitHubUserInfo.prototype.putToCache = function(user) {
+		if (window.indexedDB) {
+			this.putUserToIndexedDB(user);
+		} else {
 			localStorage.setItem(user.login, JSON.stringify(user) );
 		}
 	}
 
+//////////////////////////////////////////////////////////////
+// Функции по работе с IndexedDB в прототипе GitHubUserInfo //
+//////////////////////////////////////////////////////////////
 
 
+	/**
+	 * Возвращает открыта ли уже необхдимая iDB.
+	 * Если нет то запускает асинхронный запрос на открытие базы.
+	 * Запускает функции обратного вызова в зависимсти от успеха/ошибки.
+	 * Если функция вернула true, то вызывающая функция может получить доступ к дескриптору бд 
+	 * 		this.idb (кешируется в прототипе)
+	 * @param  {Function} onOpen  Callback, вызываемый в случае успешного открытия базы
+	 * @param  {Function} onOther Callback, вызываемый во всех остальных случаях (откат к действию по умолчанию)
+	 * @return {Boolean}          Открыта ли уже база данных
+	 */
+	GitHubUserInfo.prototype.isIDBOpened = function(onOpen, onOther) {
+		var dbopen, storeName;
+		if (window.indexedDB) {
+			if (GitHubUserInfo.prototype.idb instanceof IDBDatabase) { 
+				return true;
+			}
+			if ( (onOpen instanceof Function) ) {
+				dbopen = indexedDB.open(this.IDBName, 1);
+				storeName = this.IDBOStore; 						// для видимости внутри функций
+				if (onOther) dbopen.onerror = onOther;
+				dbopen.onupgradeneeded = function(event) {			// если базы данных не существовало
+					var db = event.target.result;
+					db.createObjectStore(storeName, { keyPath: 'login' } ); // то создаём хранилище
+				}
+				dbopen.onsuccess = function() {
+					GitHubUserInfo.prototype.idb = event.target.result;			// кешируем соединение с БД в прототипе для всех запросов
+					onOpen();
+				};
+			} else {
+				if (onOther) onOther();
+			}
+		} else {
+			if (onOther) onOther();
+		}
+		return false;
+	}
+
+	/**
+	 * Получает информацию о пользователе из базы данных
+	 * @param  {String} username    Логин пользователя для получения
+	 * @param  {Function} whenReady Callback вызываемый при окончании работы (удачном или неудачном)
+	 */
+	GitHubUserInfo.prototype.getUserFromIndexedDB = function (username, whenReady) {
+		var req, tr;
+		if (this.isIDBOpened(												// если база уже открыта, то продолжаем работать
+				this.getUserFromIndexedDB.bind(this, username, whenReady),	// если нет, то запустить саму себя при удачном открытии базы
+				whenReady)) {
+			try {															
+				req = (tr = this.idb.transaction(this.IDBOStore, 'readonly')).objectStore(this.IDBOStore).get(username);
+				tr.onerror = req.onerror = whenReady;
+				req.onsuccess = function(event) {
+					if ( event.target.result != undefined) 
+						this.user = event.target.result;
+					whenReady();
+				}.bind(this);
+			} catch (e) {
+				whenReady();
+			}
+		}
+	}
+
+	/**
+	 * Сохраняет информацию о пользователе в базу данных
+	 * @param  {Object} user Объект с инфрмацией о пользователе
+	 */
+	GitHubUserInfo.prototype.putUserToIndexedDB = function(user) {
+		if (this.isIDBOpened( this.putUserToIndexedDB.bind(this, user) )) { // аналогично, либо продолжаем, либо вызовем саму себя при удачном открытии
+			try {
+				var tr = this.idb.transaction(this.IDBOStore, 'readwrite');	// никто не ожидает завершения операции
+				tr.objectStore(this.IDBOStore).put(user);					// поэтому не ставим обработчики событий
+			} catch (e) {};
+		}
+	}
 
 
 
