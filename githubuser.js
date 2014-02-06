@@ -178,19 +178,17 @@
 		var repos, self;
 		try {
 			repos = JSON.parse(reposData);
-			self = this;
 			this.user.repos = [];
 			repos.forEach(
 				function(repo) {
 					if (! repo['private'] ) {
-						self.user.repos.push( { 
+						this.user.repos.push( { 
 							name:repo.name, 
 							url: repo.html_url,
 							desc: repo.description
 						} );
 					}
-				}
-				);
+				}, this	);
 			this.reportProgress(45);
 		} catch (e) {												// Если JSON ответ не распарсился
  			this.reportNetError();									// то пришли битые данные
