@@ -14,8 +14,11 @@
 		var url;
 		this.onProgress = callback;
 		this.user = null;
+		this.progress = 1;
+		this.reportProgress(9);
 															// асинхронная архитектура indexedDB требует 
 		this.getUserFromCache( userName, function() {		// введения callback функции
+			var callbacksU, callbacksR = {};
 			if ( this.user !== null) {
 				this.fromCache = true;						// если пользователь из кеша
 			} else {
@@ -28,13 +31,18 @@
 			}
 			if ( (! this.user.date) ||  ( ( Date.now() - this.user.date) > 24 * 60 * 60 * 1000) ) {	// информация новее чем сутки
 				url = this.GitHubAPI + '/users/' + userName;
-				this.reportProgress(1, 49);
-				this.doRequest(url, { 
+				this.reportProgress(45);
+				callbacksU = { 
 					200 : this.parseUser.bind(this),
 					404 : this.reportUserNotFound.bind(this),
 					0   : this.reportNetError.bind(this),
 					403 : this.reportRateLimit.bind(this)
-				}, 3000 );
+				};
+				Object.keys(callbacksU).forEach( function(k) { callbacksR[k] = callbacksU[k]; })
+				this.doRequest( url, callbacksU, 5000 );
+				url += '/repos';
+				callbacksR['200'] = this.parseRepos.bind(this);
+				this.doRequest( url, callbacksR, 5000 );
 			} else {
 				this.reportProgress(100);
 			}
@@ -93,12 +101,7 @@
 				this.user[key] = userValues[key];
 			}, this);
 
-			this.doRequest(user['repos_url'], { 
-				200 : this.parseRepos.bind(this),					// парсим список репозиториев
-				0   : this.reportNetError.bind(this),
-				403 : this.reportRateLimit.bind(this)
-			 }, 3000 );
-			this.reportProgress(50, 99);
+			this.reportProgress(45);
 		} catch (e) {												// Если JSON ответ не распарсился
  			 this.reportNetError();									// то пришли битые данные
 		}
@@ -106,12 +109,21 @@
 
 	/**
 	 * Вызывает функцию обратного вызова с указанным состоянием
-	 * @param  {Number} state     0-100 Процент завершенности операции
-	 * @param  {Number} nextState 0-100 Процент завершенности после следующей операции
+	 * @param  {Number} newProgress 0-100 Доля работы выполненная с предыдущего вызова функции
 	 */
-	GitHubUserInfo.prototype.reportProgress = function( state, nextState ) {
+	GitHubUserInfo.prototype.reportProgress = function( newProgress ) {
+		var nextState = this.progress + newProgress;
+		if ( nextState > 100 ) {
+			nextState = 100;
+			this.progress = 100;										// сигнализируем о завершении операции
+		}
 		if (this.onProgress instanceof Function) {
-			this.onProgress(this.user, state, nextState);
+			this.onProgress(this.user, this.progress, nextState-1);
+		}
+		this.progress = nextState;
+		if ( (this.progress === 100) && (! this.user.error) ) {
+			this.user.date = Date.now();
+			this.putToCache(this.user);
 		}
 	}
 
@@ -179,11 +191,9 @@
 					}
 				}
 				);
-			this.reportProgress(100);
-			this.user.date = Date.now();
-			this.putToCache(this.user);
+			this.reportProgress(45);
 		} catch (e) {												// Если JSON ответ не распарсился
- 			 this.reportNetError();									// то пришли битые данные
+ 			this.reportNetError();									// то пришли битые данные
 		}
 	}
 
@@ -201,7 +211,7 @@
 			localItem = localStorage.getItem( username );	// используем localStorage
 			this.user = JSON.parse(localItem);
 			if (whenReady instanceof Function)
-				whenReady();
+				setTimeout(whenReady, 1);
 		}
 	}
 
@@ -344,38 +354,40 @@
 	 * @param  {Number} nextState 0-100 Процент завершенности после следующей операции
 	 */
 	ViewUpdater.prototype.updatePage = function(info, progress, nextState) {
-		if ( (this.output.style.display === '') || (this.output.style.display === 'none') ) {	
-				this.output.style.display = 'block';					// делаем видимым поле для вывода информации
-		}
-		var ListOfAttributes = {						// какие свойства объекта в какие поля на странице записывать
-			login: this.loginOut,
-			name: this.userName,
-			email: this.email,
-			followers: this.followers
-		};
-		Object.keys(ListOfAttributes).forEach( function(key) {
-			var element = ListOfAttributes[key];
-			if (info[key] != undefined) {									// если свойство определено, то 
-				element.parentNode.style.display = '';						// показываем поле 
-				element.firstChild.textContent = info[key];					// и заполняем значение
-			} else {
-				element.parentNode.style.display = 'none';					// иначе скрываем поле
+		if (info !== null) {
+			if ( (this.output.style.display === '') || (this.output.style.display === 'none') ) {	
+					this.output.style.display = 'block';					// делаем видимым поле для вывода информации
 			}
-		});
-		var ListOfHrefs = {													// какие из свойств будут записаны как ссылки
-			loginOut : info.url,
-			email : info.email ? 'mailto:' + info.email : null,
-			followers : info.followers_url
-		};
-		Object.keys(ListOfHrefs).forEach( function(key) {
-				this[key].href = ListOfHrefs[key];					// ссылки 
-		}.bind(this));
-		this.updateRepoList(info.repos);									// вызываем функцию для вывода списка репозиториев
-		if (info.error) {													// если произошла ошибка
-			this.errormsg.style.display = '';								// показываем её
-			this.errormsg.firstChild.textContent = info.msg;
-		} else {
-			this.errormsg.style.display = 'none';							// иначе прячем
+			var ListOfAttributes = {						// какие свойства объекта в какие поля на странице записывать
+				login: this.loginOut,
+				name: this.userName,
+				email: this.email,
+				followers: this.followers
+			};
+			Object.keys(ListOfAttributes).forEach( function(key) {
+				var element = ListOfAttributes[key];
+				if (info[key] != undefined) {									// если свойство определено, то 
+					element.parentNode.style.display = '';						// показываем поле 
+					element.firstChild.textContent = info[key];					// и заполняем значение
+				} else {
+					element.parentNode.style.display = 'none';					// иначе скрываем поле
+				}
+			});
+			var ListOfHrefs = {													// какие из свойств будут записаны как ссылки
+				loginOut : info.url,
+				email : info.email ? 'mailto:' + info.email : null,
+				followers : info.followers_url
+			};
+			Object.keys(ListOfHrefs).forEach( function(key) {
+					this[key].href = ListOfHrefs[key];					// ссылки 
+			}, this);
+			this.updateRepoList(info.repos);									// вызываем функцию для вывода списка репозиториев
+			if (info.error) {													// если произошла ошибка
+				this.errormsg.style.display = '';								// показываем её
+				this.errormsg.firstChild.textContent = info.msg;
+			} else {
+				this.errormsg.style.display = 'none';							// иначе прячем
+			}
 		}
 		this.setProgress(progress, nextState);								// устанавливаем состояние прогресс-бара
 	}
@@ -430,8 +442,7 @@
 	ViewUpdater.prototype.transitionEndListener = function() {
 		if ( parseInt(this.pBar.style.width) === 100 ) {
 			this.setProgress(0);
-		}
-		if ( this.pBar.nextState !== undefined) {
+		} else if ( this.pBar.nextState !== undefined) {
 			this.pBar.style.transitionDuration='3.0s';
 			this.pBar.style.width = (this.pBar.nextState)+'%';
 		}
