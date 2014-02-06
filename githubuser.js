@@ -49,28 +49,27 @@
 	 /**
 	  * Посылает асинхронный GET запрос
 	  * @param  {String} url       Адрес для запроса
-	  * @param  {String} callbacks Хеш-таблица содержащая функции обратного вызова для различных ответов сервера
+	  * @param  {Object} callbacks Хеш-таблица содержащая функции обратного вызова для различных ответов сервера
 	  * @param  {String} timeout   
 	  */
 	GitHubUserInfo.prototype.doRequest = function(url, callbacks, timeout) {
 		var req = new XMLHttpRequest();
-		var callback;
-		req.open('GET', url, true);
+		req.open('GET', url);
 		req.onreadystatechange = function() {
 			var cback;
 			if (this.readyState != 4) return;
-			callback = callbacks[this.status];
-			if (callback instanceof Function) {
-				callback.call(this, this.responseText);
+			cback = callbacks[this.status];
+			if (cback instanceof Function) {
+				cback.call(this, this.responseText);
 			} else {
-				callback = callbacks[0];					// fallback to default callback
-				if (callback instanceof Function) {
-					callback.call(this, this.responseText);
+				cback = callbacks[0];					// fallback to default callback
+				if (cback instanceof Function) {
+					cback.call(this, this.responseText);
 				}
 			}
 		}
 		if (timeout !== undefined) req.timeout = timeout;
-		req.send('');
+		req.send( );
 	}
 
 	
@@ -92,7 +91,7 @@
 			};
 			Object.keys(userValues).forEach( function(key) {
 				this.user[key] = userValues[key];
-			}.bind(this) );
+			}, this);
 
 			this.doRequest(user['repos_url'], { 
 				200 : this.parseRepos.bind(this),					// парсим список репозиториев
@@ -121,10 +120,20 @@
 	 * @param  {String} message Текст собщения об ошибке
 	 */
 	GitHubUserInfo.prototype.reportError = function( message) {
+		function DaysToString(n) {
+			n = Math.floor(n);
+			var retval = "" + n;
+			if ( (n>5) && (n<21) ) return (retval + " дней");
+			n = n % 10;
+			if ( (n===1) ) return (retval + " день");
+			if ( (n>1) && (n<5) ) return (retval + " дня");
+			return (retval + " дней");
+		}
 		this.user.error = true;
 		this.user.msg = message;
 		if (this.fromCache)
-			this.user.msg += ". Данные использованы из кеша и возможно устарели";
+			this.user.msg += ". Данные использованы из кеша и возможно устарели (последнее обновление "+
+				 DaysToString( (Date.now() - this.user.date)/(24*60*60*1000) ) + " назад)";
 		this.reportProgress(100);
 	}
 	/**
@@ -171,7 +180,7 @@
 				}
 				);
 			this.reportProgress(100);
-			this.user.date = 1000;//Date.now();
+			this.user.date = Date.now();
 			this.putToCache(this.user);
 		} catch (e) {												// Если JSON ответ не распарсился
  			 this.reportNetError();									// то пришли битые данные
@@ -234,11 +243,11 @@
 				dbopen = indexedDB.open(this.IDBName, 1);
 				storeName = this.IDBOStore; 						// для видимости внутри функций
 				if (onOther) dbopen.onerror = onOther;
-				dbopen.onupgradeneeded = function(event) {			// если базы данных не существовало
+				dbopen.onupgradeneeded = function( event ) {			// если базы данных не существовало
 					var db = event.target.result;
 					db.createObjectStore(storeName, { keyPath: 'login' } ); // то создаём хранилище
 				}
-				dbopen.onsuccess = function() {
+				dbopen.onsuccess = function( event ) {
 					GitHubUserInfo.prototype.idb = event.target.result;			// кешируем соединение с БД в прототипе для всех запросов
 					onOpen();
 				};
@@ -322,7 +331,7 @@
 			if (el instanceof Element) {
 				this[key] = el;
 			}
-		}.bind(this));
+		}, this);
 		this.setEventListener( this.button, 'click',  this.getUser.bind(this) );
 		this.setEventListener( this.pBar, 'transitionend', this.transitionEndListener.bind(this));
 	}
@@ -345,11 +354,12 @@
 			followers: this.followers
 		};
 		Object.keys(ListOfAttributes).forEach( function(key) {
+			var element = ListOfAttributes[key];
 			if (info[key] != undefined) {									// если свойство определено, то 
-				ListOfAttributes[key].parentNode.style.display = '';		// показываем поле 
-				ListOfAttributes[key].firstChild.textContent = info[key];	// и заполняем значение
+				element.parentNode.style.display = '';						// показываем поле 
+				element.firstChild.textContent = info[key];					// и заполняем значение
 			} else {
-				ListOfAttributes[key].parentNode.style.display = 'none';	// иначе скрываем поле
+				element.parentNode.style.display = 'none';					// иначе скрываем поле
 			}
 		});
 		var ListOfHrefs = {													// какие из свойств будут записаны как ссылки
