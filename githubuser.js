@@ -1,13 +1,13 @@
 
 'use strict'
-//////////////////////////////////////////////////
-// класс для получения информации о пользовате  //
-//////////////////////////////////////////////////
+///////////////////////////////////////////////////
+// класс для получения информации о пользователе //
+///////////////////////////////////////////////////
 
 
 	/**
 	 * Конструктор класса для получения информации о пользовате
-	 * @param {String}   userName Логин пльзователя
+	 * @param {String}   userName Логин пользователя
 	 * @param {Function} callback Функция обратного вызова при изменении состояния
 	 */
 	function GitHubUserInfo(userName, callback) {
@@ -15,7 +15,7 @@
 		this.onProgress = callback;
 		this.user = null;
 		this.progress = 1;
-		this.reportProgress(9);
+		this.changeState(9);
 															// асинхронная архитектура indexedDB требует 
 		this.getUserFromCache( userName, function() {		// введения callback функции
 			var callbacksU, callbacksR = {};
@@ -31,7 +31,7 @@
 			}
 			if ( (! this.user.date) ||  ( ( Date.now() - this.user.date) > 24 * 60 * 60 * 1000) ) {	// информация новее чем сутки
 				url = this.GitHubAPI + '/users/' + userName;
-				this.reportProgress(45);
+				this.changeState(45);
 				callbacksU = { 
 					200 : this.parseUser.bind(this),
 					404 : this.reportUserNotFound.bind(this),
@@ -44,7 +44,7 @@
 				callbacksR['200'] = this.parseRepos.bind(this);
 				this.doRequest( url, callbacksR, 5000 );
 			} else {
-				this.reportProgress(100);
+				this.changeState(100);
 			}
 		}.bind(this)
 		)
@@ -101,29 +101,42 @@
 				this.user[key] = userValues[key];
 			}, this);
 
-			this.reportProgress(45);
+			this.changeState(45);
 		} catch (e) {												// Если JSON ответ не распарсился
  			 this.reportNetError();									// то пришли битые данные
 		}
 	}
 
 	/**
-	 * Вызывает функцию обратного вызова с указанным состоянием
+	 * Обработчик события успешного завершения получения информации о пользователе
+	 * Добавляет информацию в кеш
+	 */
+	GitHubUserInfo.prototype.onSuccess = function() {
+		if (!this.fromCache) {
+			this.user.date = Date.now();
+			this.putToCache(this.user);
+		}
+	}
+
+	/**
+	 * Функция устанавливает текущее состояние процесса получения информации о пользователе
+	 * Вызывается всеми асинхронными функциями при завершении их части работы
+	 * В результате поле this.progress содержит процент выполнения всей работы
+	 * Вызывает функции обратного вызова с указаннием текущего состояния
 	 * @param  {Number} newProgress 0-100 Доля работы выполненная с предыдущего вызова функции
 	 */
-	GitHubUserInfo.prototype.reportProgress = function( newProgress ) {
+	GitHubUserInfo.prototype.changeState = function( newProgress ) {
 		var nextState = this.progress + newProgress;
 		if ( nextState > 100 ) {
 			nextState = 100;
-			this.progress = 100;										// сигнализируем о завершении операции
+			this.progress = 100;									// сигнализируем о завершении операции
 		}
 		if (this.onProgress instanceof Function) {
 			this.onProgress(this.user, this.progress, nextState-1);
 		}
 		this.progress = nextState;
-		if ( (this.progress === 100) && (! this.user.error) ) {
-			this.user.date = Date.now();
-			this.putToCache(this.user);
+		if ( (this.progress === 100) && (! this.user.error) ) {		// при успешном завершении
+			this.onSuccess();										// вызываем функцию-обработчик
 		}
 	}
 
@@ -146,7 +159,7 @@
 		if (this.fromCache)
 			this.user.msg += ". Данные использованы из кеша и возможно устарели (последнее обновление "+
 				 DaysToString( (Date.now() - this.user.date)/(24*60*60*1000) ) + " назад)";
-		this.reportProgress(100);
+		this.changeState(100);
 	}
 	/**
 	 * Сообщение об ошибке 404 - пользователь не найден
@@ -189,7 +202,7 @@
 						} );
 					}
 				}, this	);
-			this.reportProgress(45);
+			this.changeState(45);
 		} catch (e) {												// Если JSON ответ не распарсился
  			this.reportNetError();									// то пришли битые данные
 		}
